@@ -1,0 +1,5 @@
+# Ignore everything in the specific folder
+Server-folder/*
+Server.class
+# Re-include the specific file
+!Server-folder/index.html

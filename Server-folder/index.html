@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Manager Web App</title>
+    <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>Server files</h1>
+            <p class="subtitle">Securely transfer and manage files via Java Sockets</p>
+        </header>
+
+        <div class="upload-section" id="dropZone">
+            <div class="upload-icon">📁</div>
+            <div class="upload-text">Drag and drop files here to upload</div>
+            <div class="upload-hint">or click to browse from your device</div>
+            <input type="file" id="fileInput" name="fileInput">
+            
+            <div class="progress-container" id="progressContainer">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+        </div>
+
+        <div>
+            <div class="file-list-header">
+                <h2>Files on Server</h2>
+                <button class="refresh-btn" onclick="fetchFiles()">
+                    🔄 Refresh
+                </button>
+            </div>
+            
+            <div class="file-list" id="fileList">
+                <!-- Files will be injected here via JS -->
+                <div class="empty-state">Loading files...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="../script.js"></script>
+</body>
+</html>
