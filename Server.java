@@ -15,6 +15,23 @@ public class Server {
 
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
             System.out.println("HTTP Server started on port " + PORT);
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface iface = interfaces.nextElement();
+                
+                // Skip inactive and loopback (127.0.0.1) interfaces
+                if (iface.isLoopback() || !iface.isUp()) continue;
+
+                Enumeration<InetAddress> addresses = iface.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress addr = addresses.nextElement();
+                    
+                    // Filter for IPv4 addresses that are site-local (like 192.168.x.x)
+                    if (addr instanceof java.net.Inet4Address && addr.isSiteLocalAddress()) {
+                        System.out.println("IP Domain : http://" + addr.getHostAddress() + ":" + PORT);
+                    }
+                }
+            }
 
             while (true) {
                 Socket clientSocket = serverSocket.accept();
