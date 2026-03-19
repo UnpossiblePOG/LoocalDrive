@@ -3,7 +3,46 @@ const API_BASE = window.location.origin; // Dynamically use the host the page wa
 document.addEventListener('DOMContentLoaded', () => {
     fetchFiles();
     setupDragAndDrop();
+    setupWebSocket();
 });
+
+// Setup WebSocket
+let ws;
+function setupWebSocket() {
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+
+    let pingInterval;
+
+    ws.onopen = () => {
+        // Keep the connection alive to prevent timeouts
+        pingInterval = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send('ping');
+            }
+        }, 30000); // 30 seconds
+    };
+
+    ws.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'connect' || data.type === 'upload' || data.type === 'delete') {
+                showToast(data.message, 'info', 15000); // 15 seconds display
+            }
+            if (data.type === 'upload' || data.type === 'delete') {
+                fetchFiles();
+            }
+        } catch (e) {
+            // Ignore non-JSON messages (like pong)
+        }
+    };
+
+    ws.onclose = () => {
+        clearInterval(pingInterval);
+        // Automatically try to reconnect
+        setTimeout(setupWebSocket, 5000);
+    };
+}
 
 // Setup Drag and Drop / File Selection
 function setupDragAndDrop() {
@@ -52,10 +91,10 @@ function handleFileSelect(e) {
 function uploadFile(file) {
     const progressContainer = document.getElementById('progressContainer');
     const progressBar = document.getElementById('progressBar');
-    
+
     // Start reading file as Base64 to send over plain socket
     const reader = new FileReader();
-    
+
     reader.onloadstart = () => {
         progressContainer.style.display = 'block';
         progressBar.style.width = '10%';
@@ -71,7 +110,7 @@ function uploadFile(file) {
     reader.onload = async (e) => {
         try {
             const base64Data = e.target.result;
-            
+
             progressBar.style.width = '70%'; // Reading done, sending...
 
             const response = await fetch(`${API_BASE}/upload`, {
@@ -118,9 +157,9 @@ async function fetchFiles() {
     try {
         const response = await fetch(`${API_BASE}/list`);
         if (!response.ok) throw new Error("Failed to fetch files");
-        
+
         const files = await response.json();
-        
+
         if (!Array.isArray(files) || files.length === 0) {
             fileListEl.innerHTML = '<div class="empty-state">No files found. Upload one to get started!</div>';
             return;
@@ -133,7 +172,7 @@ async function fetchFiles() {
             const div = document.createElement('div');
             div.className = 'file-item';
             div.style.animationDelay = `${index * 0.05}s`;
-            
+
             div.innerHTML = `
                 <div class="file-info">
                     <div class="file-icon">📄</div>
@@ -196,7 +235,7 @@ function downloadFile(fileName) {
 
 // Utils
 function escapeHTML(str) {
-    return str.replace(/[&<>'"]/g, 
+    return str.replace(/[&<>'"]/g,
         tag => ({
             '&': '&amp;',
             '<': '&lt;',
@@ -207,21 +246,38 @@ function escapeHTML(str) {
     );
 }
 
-function showToast(message, type = 'info') {
+function showToast(message, type = 'info', duration = 3000) {
     const container = document.getElementById('toastContainer');
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.textContent = message;
-    
+
+    const content = document.createElement('span');
+    content.textContent = message;
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'toast-close-btn';
+    closeBtn.innerHTML = '&times;';
+
+    toast.appendChild(content);
+    toast.appendChild(closeBtn);
+
     container.appendChild(toast);
 
-    // Remove after 3 seconds
-    setTimeout(() => {
+    let isRemoving = false;
+
+    const removeToast = () => {
+        if (isRemoving) return;
+        isRemoving = true;
         toast.style.animation = 'toastFadeOut 0.3s ease forwards';
         setTimeout(() => {
-            if(container.contains(toast)) {
+            if (container.contains(toast)) {
                 container.removeChild(toast);
             }
         }, 300);
-    }, 3000);
+    };
+
+    closeBtn.addEventListener('click', removeToast);
+
+    // Remove after specified duration
+    setTimeout(removeToast, duration);
 }

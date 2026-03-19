@@ -4,6 +4,12 @@ A java + web application which will work as google drive for your local network.
 ## Use Case
 You can use this project to create your own Google Drive-like service only for your local network. Devices need to connect to the same WiFi or network to access the storage. This is ideal for sharing files across devices at home or in the office.
 
+### Real-time Notifications
+The application includes a built-in WebSocket server that pushes real-time notifications to all connected devices. 
+- When a new device connects, other active users are instantly notified.
+- Whenever anyone uploads or deletes a file, everyone else sees a popup notification (e.g., "Successfully uploaded file.png") and the file list refreshes automatically.
+- Notifications persist for 15 seconds to ensure you don't miss any recent activity.
+
 ## Prerequisites
 You need to install Java to run this project. If you don't have Java installed, follow the instructions for your operating system:
 

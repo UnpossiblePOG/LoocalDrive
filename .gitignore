@@ -2,5 +2,9 @@
 Server-folder/*
 Server.class
 Server$ClientHandler.class
+Client.java
+Client.class
+Client$ClientHandler.class
+Server$WsClient.class
 # Re-include the specific file
 !Server-folder/index.html

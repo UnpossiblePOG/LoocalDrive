@@ -269,6 +269,25 @@ input[type="file"] {
     backdrop-filter: blur(10px);
     animation: toastSlideIn 0.3s ease forwards;
     min-width: 250px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+.toast-close-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.25rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 0.25rem;
+    transition: color 0.2s;
+}
+
+.toast-close-btn:hover {
+    color: var(--danger);
 }
 
 .toast.error {

@@ -2,10 +2,51 @@ import java.io.*;
 import java.net.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.*;
+import java.security.MessageDigest;
 
 public class Server {
     private static final int PORT = 5000;
     private static final String FOLDER_PATH = "Server-folder";
+
+    private static class WsClient {
+        public final OutputStream output;
+        public final String ip;
+        public WsClient(OutputStream output, String ip) {
+            this.output = output;
+            this.ip = ip;
+        }
+    }
+    private static final List<WsClient> wsClients = new CopyOnWriteArrayList<>();
+
+    public static void broadcastWebSocketExceptIp(String excludeIp, String jsonMessage) {
+        for (WsClient client : wsClients) {
+            if (!client.ip.equals(excludeIp)) {
+                System.out.println("From : " + excludeIp + " | To : " + client.ip + ": " + jsonMessage);
+                sendWsMessage(client.output, jsonMessage);
+            }
+        }
+    }
+
+    public static void sendWsMessage(OutputStream out, String msg) {
+        synchronized(out) {
+        try {
+            byte[] raw = msg.getBytes("UTF-8");
+            out.write(129); // text frame FIN
+            if (raw.length <= 125) {
+                out.write(raw.length);
+            } else if (raw.length <= 65535) {
+                out.write(126);
+                out.write((raw.length >> 8) & 0xFF);
+                out.write(raw.length & 0xFF);
+            }
+            out.write(raw);
+            out.flush();
+        } catch (IOException e) {
+            // broken pipe handled by read loop
+        }
+        }
+    }
 
     public static void main(String[] args) {
         File folder = new File(FOLDER_PATH);
@@ -80,6 +121,8 @@ public class Server {
 
                 if (method.equals("OPTIONS")) {
                     sendResponse(output, 204, "No Content", "text/plain", "");
+                } else if (headers.containsKey("Upgrade") && "websocket".equalsIgnoreCase(headers.get("Upgrade"))) {
+                    handleWebSocket(input, output, headers, socket);
                 } else if (method.equals("GET")) {
                     if (path.equals("/") || path.equals("/index.html")) {
                         serveFile(output, "index.html", "text/html");
@@ -175,7 +218,17 @@ public class Server {
                 }
             }
             json.append("]");
-            sendResponse(output, 200, "OK", "application/json", json.toString());
+            
+            String jsonStr = json.toString();
+            String headers = "HTTP/1.1 200 OK\r\n" +
+                             "Content-Type: application/json\r\n" +
+                             "Content-Length: " + jsonStr.getBytes("UTF-8").length + "\r\n" +
+                             "Cache-Control: no-store, no-cache, must-revalidate, max-age=0\r\n" +
+                             "Access-Control-Allow-Origin: *\r\n" +
+                             "Connection: close\r\n\r\n";
+            output.write(headers.getBytes("UTF-8"));
+            output.write(jsonStr.getBytes("UTF-8"));
+            output.flush();
         }
 
         private void serveFileForDownload(OutputStream output, String filename) throws IOException {
@@ -198,11 +251,29 @@ public class Server {
         }
 
         private void handleUpload(InputStream input, OutputStream output, Map<String, String> headers, int contentLength) throws IOException {
-            String fileName = headers.get("File-Name");
-            if (fileName == null || fileName.trim().isEmpty()) {
+            String originalFileName = headers.get("File-Name");
+            if (originalFileName == null || originalFileName.trim().isEmpty()) {
                 sendResponse(output, 400, "Bad Request", "text/plain", "Missing File-Name header");
                 return;
             }
+            
+            originalFileName = originalFileName.replaceAll("[\n\r\"']", "").trim();
+            String rawUploaderIp = socket.getInetAddress().getHostAddress();
+            String ipDash = rawUploaderIp.replace(".", "-");
+            String timeDash = new java.text.SimpleDateFormat("yyyy-MM-dd-HH-mm-ss").format(new java.util.Date());
+            
+            int dotIndex = originalFileName.lastIndexOf('.');
+            String baseName = originalFileName;
+            String ext = "";
+            if (dotIndex > 0) {
+                baseName = originalFileName.substring(0, dotIndex);
+                ext = originalFileName.substring(dotIndex);
+            } else if (dotIndex == 0) {
+                baseName = "";
+                ext = originalFileName;
+            }
+            
+            String fileName = baseName + "-" + ipDash + "-" + timeDash + ext;
 
             if (contentLength > 0) {
                 byte[] body = new byte[contentLength];
@@ -225,6 +296,11 @@ public class Server {
                     byte[] decodedBytes = Base64.getDecoder().decode(base64Body);
                     File file = new File(FOLDER_PATH, fileName);
                     Files.write(file.toPath(), decodedBytes);
+                    
+                    String uploaderIp = socket.getInetAddress().getHostAddress();
+                    String msg = "{\"type\":\"upload\", \"message\":\"" + uploaderIp + " successfully uploaded " + fileName + "\"}";
+                    Server.broadcastWebSocketExceptIp(uploaderIp, msg);
+
                     sendResponse(output, 200, "OK", "text/plain", "File uploaded successfully");
                 } catch (IllegalArgumentException e) {
                     sendResponse(output, 400, "Bad Request", "text/plain", "Invalid Base64 payload");
@@ -251,6 +327,9 @@ public class Server {
                 File file = new File(FOLDER_PATH, fileName);
                 if (file.exists() && file.isFile()) {
                     if (file.delete()) {
+                        String deleterIp = socket.getInetAddress().getHostAddress();
+                        String msg = "{\"type\":\"delete\", \"message\":\"" + deleterIp + " deleted " + fileName + "\"}";
+                        Server.broadcastWebSocketExceptIp(deleterIp, msg);
                         sendResponse(output, 200, "OK", "text/plain", "File deleted successfully");
                     } else {
                         sendResponse(output, 500, "Internal Server Error", "text/plain", "Failed to delete file");
@@ -278,6 +357,54 @@ public class Server {
             output.write(headers.getBytes("UTF-8"));
             output.write(body);
             output.flush();
+        }
+
+        private void handleWebSocket(InputStream input, OutputStream output, Map<String, String> headers, Socket socket) throws IOException {
+            try {
+                socket.setTcpNoDelay(true); // Disable Nagle's algorithm for immediate transmission
+                String wsKey = headers.get("Sec-WebSocket-Key");
+                if (wsKey == null) return;
+                String magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+                MessageDigest md = MessageDigest.getInstance("SHA-1");
+                byte[] digest = md.digest((wsKey + magic).getBytes("UTF-8"));
+                String acceptKey = Base64.getEncoder().encodeToString(digest);
+                
+                String response = "HTTP/1.1 101 Switching Protocols\r\n" +
+                                  "Upgrade: websocket\r\n" +
+                                  "Connection: Upgrade\r\n" +
+                                  "Sec-WebSocket-Accept: " + acceptKey + "\r\n\r\n";
+                output.write(response.getBytes("UTF-8"));
+                output.flush();
+                
+                String ip = socket.getInetAddress().getHostAddress();
+                
+                WsClient client = new WsClient(output, ip);
+                Server.wsClients.add(client);
+                
+                // Fetch the hostname in the background as it performs a reverse DNS lookup which can block for seconds
+                new Thread(() -> {
+                    String hostName = socket.getInetAddress().getHostName();
+                    String name = hostName.equals(ip) ? "" : " (" + hostName + ")";
+                    String connectMsg = "{\"type\":\"connect\", \"message\":\"" + ip + name + " connected.\"}";
+                    Server.broadcastWebSocketExceptIp(ip, connectMsg);
+                }).start();
+                
+                while (socket.isConnected() && !socket.isClosed()) {
+                    int b = input.read();
+                    if (b == -1) break;
+                }
+            } catch (Exception e) {
+                if (!(e instanceof SocketException)) {
+                    System.err.println("WS error: " + e.getMessage());
+                }
+            } finally {
+                for (WsClient c : Server.wsClients) {
+                    if (c.output == output) {
+                        Server.wsClients.remove(c);
+                        break;
+                    }
+                }
+            }
         }
     }
 }
