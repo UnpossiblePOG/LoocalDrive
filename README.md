@@ -40,9 +40,9 @@ sudo apt install default-jdk
    ```bash
    java Server
    ```
-5. Find out the IP address of the machine where the server is running (e.g., using `ipconfig` on Windows or `ifconfig`/`ip a` on Mac/Linux).
+5. The terminal will immediately display the suggested local URLs for your machine (e.g., `IP Domain : http://192.168.x.x:5000`).
 6. Open a web browser on a different device that is connected to the same network/WiFi.
-7. Enter the IP address and port (if defined, e.g., `http://<IP_ADDRESS>:8000`) into the browser's address bar to access your local drive.
+7. Enter the IP address and port (if defined, e.g., `http://192.168.x.x:5000`) into the browser's address bar to access your local drive.
 
 ## Customization
 Feel free to make changes to the code as per your requirements to add more features, modify the UI, or change the server behavior.
