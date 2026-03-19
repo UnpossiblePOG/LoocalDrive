@@ -257,6 +257,7 @@ input[type="file"] {
     flex-direction: column;
     gap: 0.5rem;
     z-index: 1000;
+    max-width: calc(100vw - 4rem); /* Ensure container doesn't exceed screen width minus padding */
 }
 
 .toast {
@@ -269,10 +270,17 @@ input[type="file"] {
     backdrop-filter: blur(10px);
     animation: toastSlideIn 0.3s ease forwards;
     min-width: 250px;
+    max-width: 100%;
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 1rem;
+}
+
+.toast span {
+    flex: 1;
+    word-wrap: break-word;
+    word-break: break-all;
 }
 
 .toast-close-btn {
